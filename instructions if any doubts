@@ -1,0 +1,92 @@
+2. ChatActivity.java
+a) Add FCM token & fields as needed:
+
+java
+private String receiptFcmToken = "";
+private String myName = "";
+// Add TAG if not already:
+private static final String TAG = "ChatActivity";
+b) In loadReceiptDetails() (inside your ValueEventListener):
+
+java
+String name = "" + snapshot.child("name").getValue();
+String profileImageUrl = "" + snapshot.child("profileImageUrl").getValue();
+receiptFcmToken = "" + snapshot.child("fcmToken").getValue(); // <-- add this
+myName = ... // set this when you load your own profile/user
+(Set myName either from your auth provider or a separate lookup—needed for notification title.)
+
+c) Add notification logic:
+Directly after successful message send (onSuccessListener for sendMessage or upload):
+
+java
+// Only for new text messages!
+if (messageType.equals(Utils.MESSAGE_TYPE_TEXT)) {
+    prepareNotification(message);
+}
+d) Implement prepareNotification(String message) method:
+
+java
+private void prepareNotification(String message) {
+    Log.d(TAG, "prepareNotification: ");
+    JSONObject notificationJo = new JSONObject();
+    JSONObject notificationDataJo = new JSONObject();
+    JSONObject notificationNotificationJo = new JSONObject();
+
+    try {
+        // Custom data for app logic
+        notificationDataJo.put("notificationType", Utils.NOTIFICATION_TYPE_NEW_MESSAGE);
+        notificationDataJo.put("senderUid", firebaseAuth.getUid());
+
+        // FCM reserved fields for display
+        notificationNotificationJo.put("title", myName); // sender name
+        notificationNotificationJo.put("body", message); // message content
+        notificationNotificationJo.put("sound", "default");
+
+        // Combine into main object
+        notificationJo.put("to", receiptFcmToken); // recipient's FCM token!
+        notificationJo.put("notification", notificationNotificationJo);
+        notificationJo.put("data", notificationDataJo);
+
+    } catch (Exception e) {
+        Log.e(TAG, "prepareNotification: ", e);
+    }
+
+    sendFcmNotification(notificationJo);
+}
+e) Implement sendFcmNotification(JSONObject notificationJo)
+(Uses Volley, add dependency in build.gradle if not already)
+
+java
+private void sendFcmNotification(JSONObject notificationJo) {
+    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(
+        Request.Method.POST,
+        "https://fcm.googleapis.com/fcm/send",
+        notificationJo,
+        response -> Log.d(TAG, "sendFcmNotification: " + response.toString()),
+        error -> Log.e(TAG, "sendFcmNotification ERROR: ", error)
+    ) {
+        @Override
+        public Map<String, String> getHeaders() {
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Content-Type", "application/json");
+            headers.put("Authorization", "key=" + Utils.FCM_SERVER_KEY);
+            return headers;
+        }
+    };
+
+    Volley.newRequestQueue(this).add(jsonObjectRequest);
+}
+3. AndroidManifest.xml
+Add Internet permission if not already present:
+
+xml
+<uses-permission android:name="android.permission.INTERNET" />
+4. app/build.gradle
+If using Volley, add (inside dependencies block):
+
+groovy
+implementation 'com.android.volley:volley:1.2.1'
+5. Firebase FCM Token
+Make sure each user saves their token under "fcmToken" in your "Users" node.
+
+When the user logs in or token is refreshed (see Firebase docs), save/update their token appropriately.
